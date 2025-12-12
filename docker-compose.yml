@@ -38,8 +38,10 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=change-me
-      - GF_SERVER_ROOT_URL=https://grafana.nutline.dev
+      - GF_SERVER_ROOT_URL=https://graf.nutline.dev
       - GF_SERVER_SERVE_FROM_SUB_PATH=false
+      - GF_SERVER_DOMAIN=graf.nutline.dev
+      - GF_SERVER_DOMAIN=graf.nutline.dev
     volumes:
       - grafana-data:/var/lib/grafana
     networks: [dokploy-network]
