@@ -48,10 +48,19 @@ services:
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.grafana.rule=Host(`graf.nutline.dev`)"
-      - "traefik.http.routers.grafana.entrypoints=websecure"
-      - "traefik.http.routers.grafana.tls.certresolver=letsencrypt"
-      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+      - "traefik.docker.network=dokploy-network"
+      # HTTP router (redirects to HTTPS)
+      - "traefik.http.routers.grafana-http.rule=Host(`graf.nutline.dev`)"
+      - "traefik.http.routers.grafana-http.entrypoints=web"
+      - "traefik.http.routers.grafana-http.middlewares=redirect-to-https@file"
+      - "traefik.http.routers.grafana-http.service=grafana-svc"
+      # HTTPS router
+      - "traefik.http.routers.grafana-https.rule=Host(`graf.nutline.dev`)"
+      - "traefik.http.routers.grafana-https.entrypoints=websecure"
+      - "traefik.http.routers.grafana-https.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.grafana-https.service=grafana-svc"
+      # Service
+      - "traefik.http.services.grafana-svc.loadbalancer.server.port=3000"
     depends_on:
       - loki
       - tempo
