@@ -1,9 +1,6 @@
-version: "3.9"
-
 networks:
-  observability:
-    name: observability
-    driver: bridge
+  dokploy-network:
+    external: true
 
 services:
   loki:
@@ -12,7 +9,7 @@ services:
     volumes:
       - ./loki-config.yml:/etc/loki/config.yml:ro
       - loki-data:/loki
-    networks: [observability]
+    networks: [dokploy-network]
     restart: unless-stopped
 
   promtail:
@@ -22,7 +19,7 @@ services:
       - ./promtail-config.yml:/etc/promtail/config.yml:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks: [observability]
+    networks: [dokploy-network]
     restart: unless-stopped
     depends_on:
       - loki
@@ -33,7 +30,7 @@ services:
     volumes:
       - ./tempo.yml:/etc/tempo.yml:ro
       - tempo-data:/var/tempo
-    networks: [observability]
+    networks: [dokploy-network]
     restart: unless-stopped
 
   grafana:
@@ -41,9 +38,11 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=change-me
+      - GF_SERVER_ROOT_URL=https://grafana.nutline.dev
+      - GF_SERVER_SERVE_FROM_SUB_PATH=false
     volumes:
       - grafana-data:/var/lib/grafana
-    networks: [observability]
+    networks: [dokploy-network]
     restart: unless-stopped
     depends_on:
       - loki
