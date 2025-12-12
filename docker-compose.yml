@@ -38,9 +38,9 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=change-me
-      - GF_SERVER_ROOT_URL=https://graf.nutline.dev
+      - GF_SERVER_ROOT_URL=https://hello.nutline.dev
       - GF_SERVER_SERVE_FROM_SUB_PATH=false
-      - GF_SERVER_DOMAIN=graf.nutline.dev
+      - GF_SERVER_DOMAIN=hello.nutline.dev
       - GF_SERVER_ENFORCE_DOMAIN=true
     volumes:
       - grafana-data:/var/lib/grafana
