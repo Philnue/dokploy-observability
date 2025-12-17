@@ -4,19 +4,29 @@ global:
 
 scrape_configs:
   # Prometheus selbst
-  - job_name: 'prometheus'
+  - job_name: "prometheus"
     static_configs:
-      - targets: ['localhost:9090']
+      - targets: ["localhost:9090"]
+
+  # Motovers API - Static Target (HTTPS)
+  - job_name: "motovers-api"
+    scheme: https
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["kundenportal.nutline.dev"]
+        labels:
+          app: "motovers-api"
+          environment: "production"
 
   # Docker-Container mit metrics endpoint (label prometheus.scrape=true)
-  - job_name: 'docker-containers'
+  - job_name: "docker-containers"
     docker_sd_configs:
       - host: unix:///var/run/docker.sock
         refresh_interval: 30s
     relabel_configs:
       # Nur Container mit Label prometheus.scrape=true
       - source_labels: [__meta_docker_container_label_prometheus_scrape]
-        regex: 'true'
+        regex: "true"
         action: keep
       # Port aus Label prometheus.port
       - source_labels: [__meta_docker_container_label_prometheus_port]
@@ -24,7 +34,7 @@ scrape_configs:
         target_label: __address__
         replacement: ${1}
       - source_labels: [__meta_docker_container_name]
-        regex: '/(.+)'
+        regex: "/(.+)"
         target_label: container
       - source_labels: [__meta_docker_container_label_prometheus_path]
         regex: (.+)
