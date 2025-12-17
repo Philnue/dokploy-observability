@@ -33,6 +33,20 @@ services:
     networks: [dokploy-network]
     restart: unless-stopped
 
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [dokploy-network]
+    restart: unless-stopped
+
   grafana:
     image: grafana/grafana:latest
     environment:
@@ -64,8 +78,10 @@ services:
     depends_on:
       - loki
       - tempo
+      - prometheus
 
 volumes:
   loki-data:
   tempo-data:
+  prometheus-data:
   grafana-data:
