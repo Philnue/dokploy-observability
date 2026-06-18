@@ -8,7 +8,7 @@ rule_files:
 scrape_configs:
   - job_name: "prometheus"
     static_configs:
-      - targets: ["localhost:9090"]
+      - targets: ["__PROMETHEUS_SELF_TARGET__"]
         labels:
           project: "observability"
           app: "prometheus"
@@ -16,7 +16,7 @@ scrape_configs:
 
   - job_name: "loki"
     static_configs:
-      - targets: ["loki:3100"]
+      - targets: ["__LOKI_METRICS_TARGET__"]
         labels:
           project: "observability"
           app: "loki"
@@ -24,7 +24,7 @@ scrape_configs:
 
   - job_name: "tempo"
     static_configs:
-      - targets: ["tempo:3200"]
+      - targets: ["__TEMPO_METRICS_TARGET__"]
         labels:
           project: "observability"
           app: "tempo"
@@ -32,7 +32,7 @@ scrape_configs:
 
   - job_name: "alloy"
     static_configs:
-      - targets: ["alloy:12345"]
+      - targets: ["__ALLOY_METRICS_TARGET__"]
         labels:
           project: "observability"
           app: "alloy"
@@ -41,17 +41,17 @@ scrape_configs:
   - job_name: "grafana"
     metrics_path: "/metrics"
     static_configs:
-      - targets: ["grafana:3000"]
+      - targets: ["__GRAFANA_METRICS_TARGET__"]
         labels:
           project: "observability"
           app: "grafana"
           environment: "production"
 
   - job_name: "motovers-api"
-    scheme: https
-    metrics_path: "/metrics"
+    scheme: __MOTOVERS_API_METRICS_SCHEME__
+    metrics_path: "__MOTOVERS_API_METRICS_PATH__"
     static_configs:
-      - targets: ["kundenportal.nutline.dev"]
+      - targets: ["__MOTOVERS_API_METRICS_TARGET__"]
         labels:
           project: "kundenportal"
           app: "motovers-api"

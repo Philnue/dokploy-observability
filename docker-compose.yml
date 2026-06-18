@@ -9,14 +9,17 @@ services:
       - -config.file=/etc/loki/config.yml
       - -config.expand-env=true
     environment:
+      LOKI_HTTP_LISTEN_PORT: ${LOKI_HTTP_LISTEN_PORT:-3100}
+      LOKI_GRPC_LISTEN_PORT: ${LOKI_GRPC_LISTEN_PORT:-9095}
       LOKI_RETENTION: ${LOKI_RETENTION:-2160h}
+      LOKI_READY_URL: ${LOKI_READY_URL:?Set LOKI_READY_URL in .env}
     volumes:
       - ./loki-config.yml:/etc/loki/config.yml:ro
       - loki-data:/loki
     networks: [dokploy-network]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- \"$${LOKI_READY_URL}\" >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -29,6 +32,8 @@ services:
       - /etc/alloy/config.alloy
       - --server.http.listen-addr=0.0.0.0:12345
       - --storage.path=/var/lib/alloy/data
+    environment:
+      LOKI_PUSH_URL: ${LOKI_PUSH_URL:?Set LOKI_PUSH_URL in .env}
     volumes:
       - ./alloy-config.alloy:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -50,14 +55,18 @@ services:
       - -config.file=/etc/tempo.yml
       - -config.expand-env=true
     environment:
+      TEMPO_HTTP_LISTEN_PORT: ${TEMPO_HTTP_LISTEN_PORT:-3200}
+      TEMPO_OTLP_GRPC_LISTEN_ENDPOINT: ${TEMPO_OTLP_GRPC_LISTEN_ENDPOINT:-0.0.0.0:4317}
+      TEMPO_OTLP_HTTP_LISTEN_ENDPOINT: ${TEMPO_OTLP_HTTP_LISTEN_ENDPOINT:-0.0.0.0:4318}
       TEMPO_RETENTION: ${TEMPO_RETENTION:-2160h}
+      TEMPO_READY_URL: ${TEMPO_READY_URL:?Set TEMPO_READY_URL in .env}
     volumes:
       - ./tempo.yml:/etc/tempo.yml:ro
       - tempo-data:/var/tempo
     networks: [dokploy-network]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3200/ready >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- \"$${TEMPO_READY_URL}\" >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -65,20 +74,45 @@ services:
 
   prometheus:
     image: ${PROMETHEUS_IMAGE:-quay.io/prometheus/prometheus:v3.4.2}
+    entrypoint: /bin/sh
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-2160h}'
-      - '--web.enable-lifecycle'
+      - -c
+      - |
+        sed \
+          -e "s|__PROMETHEUS_SELF_TARGET__|$${PROMETHEUS_SELF_TARGET}|g" \
+          -e "s|__LOKI_METRICS_TARGET__|$${LOKI_METRICS_TARGET}|g" \
+          -e "s|__TEMPO_METRICS_TARGET__|$${TEMPO_METRICS_TARGET}|g" \
+          -e "s|__ALLOY_METRICS_TARGET__|$${ALLOY_METRICS_TARGET}|g" \
+          -e "s|__GRAFANA_METRICS_TARGET__|$${GRAFANA_METRICS_TARGET}|g" \
+          -e "s|__MOTOVERS_API_METRICS_SCHEME__|$${MOTOVERS_API_METRICS_SCHEME}|g" \
+          -e "s|__MOTOVERS_API_METRICS_PATH__|$${MOTOVERS_API_METRICS_PATH}|g" \
+          -e "s|__MOTOVERS_API_METRICS_TARGET__|$${MOTOVERS_API_METRICS_TARGET}|g" \
+          /etc/prometheus/prometheus.yml.template > /tmp/prometheus.yml
+        exec /bin/prometheus \
+          --config.file=/tmp/prometheus.yml \
+          --storage.tsdb.path=/prometheus \
+          --storage.tsdb.retention.time="$${PROMETHEUS_RETENTION}" \
+          --web.enable-lifecycle
+    environment:
+      PROMETHEUS_RETENTION: ${PROMETHEUS_RETENTION:-2160h}
+      PROMETHEUS_HEALTH_URL: ${PROMETHEUS_HEALTH_URL:?Set PROMETHEUS_HEALTH_URL in .env}
+      PROMETHEUS_SELF_TARGET: ${PROMETHEUS_SELF_TARGET:?Set PROMETHEUS_SELF_TARGET in .env}
+      LOKI_METRICS_TARGET: ${LOKI_METRICS_TARGET:?Set LOKI_METRICS_TARGET in .env}
+      TEMPO_METRICS_TARGET: ${TEMPO_METRICS_TARGET:?Set TEMPO_METRICS_TARGET in .env}
+      ALLOY_METRICS_TARGET: ${ALLOY_METRICS_TARGET:?Set ALLOY_METRICS_TARGET in .env}
+      GRAFANA_METRICS_TARGET: ${GRAFANA_METRICS_TARGET:?Set GRAFANA_METRICS_TARGET in .env}
+      MOTOVERS_API_METRICS_SCHEME: ${MOTOVERS_API_METRICS_SCHEME:?Set MOTOVERS_API_METRICS_SCHEME in .env}
+      MOTOVERS_API_METRICS_PATH: ${MOTOVERS_API_METRICS_PATH:?Set MOTOVERS_API_METRICS_PATH in .env}
+      MOTOVERS_API_METRICS_TARGET: ${MOTOVERS_API_METRICS_TARGET:?Set MOTOVERS_API_METRICS_TARGET in .env}
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus.yml.template:/etc/prometheus/prometheus.yml.template:ro
       - ./prometheus/alerts.yml:/etc/prometheus/rules/alerts.yml:ro
       - prometheus-data:/prometheus
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks: [dokploy-network]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- \"$${PROMETHEUS_HEALTH_URL}\" >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -89,14 +123,18 @@ services:
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
-      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-https://grafana.nutline.xyz}
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:?Set GRAFANA_ROOT_URL in .env}
       GF_SERVER_PROTOCOL: http
       GF_SERVER_SERVE_FROM_SUB_PATH: "false"
-      GF_SERVER_DOMAIN: ${GRAFANA_DOMAIN:-grafana.nutline.xyz}
+      GF_SERVER_DOMAIN: ${GRAFANA_DOMAIN:?Set GRAFANA_DOMAIN in .env}
       GF_SERVER_ENFORCE_DOMAIN: "false"
       GF_AUTH_ANONYMOUS_ENABLED: "false"
       GF_METRICS_ENABLED: "true"
       GF_USERS_DEFAULT_THEME: system
+      GRAFANA_HEALTH_URL: ${GRAFANA_HEALTH_URL:?Set GRAFANA_HEALTH_URL in .env}
+      PROMETHEUS_URL: ${PROMETHEUS_URL:?Set PROMETHEUS_URL in .env}
+      LOKI_URL: ${LOKI_URL:?Set LOKI_URL in .env}
+      TEMPO_URL: ${TEMPO_URL:?Set TEMPO_URL in .env}
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
@@ -104,7 +142,7 @@ services:
     networks: [dokploy-network]
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- \"$${GRAFANA_HEALTH_URL}\" >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5

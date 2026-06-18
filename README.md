@@ -17,15 +17,23 @@ compatibility with the old Promtail/Loki v11 setup.
 - Prometheus: metrics scraping and alert rules
 - Tempo: trace storage via OTLP
 
-## Internal URLs
+## URLs From `.env`
 
-These URLs work from containers attached to `dokploy-network`:
+All public and internal URLs are configured in `.env`. The defaults in
+`.env.example` work for containers attached to `dokploy-network`.
 
-- Loki: `http://loki:3100`
-- Tempo OTLP HTTP: `http://tempo:4318`
-- Tempo OTLP gRPC: `http://tempo:4317`
-- Tempo API: `http://tempo:3200`
-- Prometheus: `http://prometheus:9090`
+Important values:
+
+- `GRAFANA_ROOT_URL`: public Grafana URL
+- `GRAFANA_HEALTH_URL`: internal Grafana healthcheck URL
+- `LOKI_URL`: internal Loki query URL for Grafana
+- `LOKI_PUSH_URL`: internal Loki push URL for Alloy
+- `LOKI_READY_URL`: internal Loki healthcheck URL
+- `TEMPO_URL`: internal Tempo API URL for Grafana
+- `TEMPO_OTLP_HTTP_URL`: internal OTLP HTTP URL for apps
+- `PROMETHEUS_URL`: internal Prometheus URL for Grafana
+- `PROMETHEUS_HEALTH_URL`: internal Prometheus healthcheck URL
+- `*_METRICS_TARGET`: Prometheus scrape targets without protocol
 
 ## Setup
 
@@ -60,8 +68,14 @@ These URLs work from containers attached to `dokploy-network`:
    ```env
    GRAFANA_DOMAIN=grafana.nutline.xyz
    GRAFANA_ROOT_URL=https://grafana.nutline.xyz
+   GRAFANA_HEALTH_URL=http://localhost:3000/api/health
    GRAFANA_ADMIN_USER=admin
    GRAFANA_ADMIN_PASSWORD=use-a-real-password
+   LOKI_URL=http://loki:3100
+   LOKI_PUSH_URL=http://loki:3100/loki/api/v1/push
+   TEMPO_URL=http://tempo:3200
+   TEMPO_OTLP_HTTP_URL=http://tempo:4318
+   PROMETHEUS_URL=http://prometheus:9090
    LOKI_RETENTION=2160h
    TEMPO_RETENTION=2160h
    PROMETHEUS_RETENTION=2160h
@@ -78,7 +92,7 @@ These URLs work from containers attached to `dokploy-network`:
    docker compose logs prometheus
    ```
 
-8. Open Grafana at `https://grafana.nutline.xyz`.
+8. Open Grafana at the URL configured in `GRAFANA_ROOT_URL`.
 
 9. Verify in Grafana:
 
@@ -145,13 +159,17 @@ services:
       prometheus.path: "/metrics"
     environment:
       OTEL_SERVICE_NAME: "motovers-api"
-      OTEL_EXPORTER_OTLP_ENDPOINT: "http://tempo:4318"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${TEMPO_OTLP_HTTP_URL}"
       OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
       OTEL_RESOURCE_ATTRIBUTES: "project=kundenportal,deployment.environment=production"
 ```
 
 For metrics, the app must expose `GET /metrics` on the configured port inside
 the container.
+
+For app projects in separate Compose files, copy the required endpoint values
+from this stack's `.env` into that project's `.env`, especially
+`TEMPO_OTLP_HTTP_URL`.
 
 ## Logging Convention
 
@@ -311,7 +329,7 @@ No Prometheus metrics:
 No traces:
 
 1. The app must be attached to `dokploy-network`.
-2. Use `OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318`.
+2. Use `OTEL_EXPORTER_OTLP_ENDPOINT=${TEMPO_OTLP_HTTP_URL}`.
 3. Use `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`.
 4. Set `OTEL_SERVICE_NAME` to the app name you want to see in Tempo.
 

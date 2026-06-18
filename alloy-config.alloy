@@ -130,6 +130,6 @@ loki.process "docker_logs" {
 
 loki.write "local" {
 	endpoint {
-		url = "http://loki:3100/loki/api/v1/push"
+		url = sys.env("LOKI_PUSH_URL")
 	}
 }
