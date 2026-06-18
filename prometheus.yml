@@ -2,40 +2,120 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+rule_files:
+  - "/etc/prometheus/rules/*.yml"
+
 scrape_configs:
-  # Prometheus selbst
   - job_name: "prometheus"
     static_configs:
       - targets: ["localhost:9090"]
+        labels:
+          project: "observability"
+          app: "prometheus"
+          environment: "production"
 
-  # Motovers API - Static Target (HTTPS)
+  - job_name: "loki"
+    static_configs:
+      - targets: ["loki:3100"]
+        labels:
+          project: "observability"
+          app: "loki"
+          environment: "production"
+
+  - job_name: "tempo"
+    static_configs:
+      - targets: ["tempo:3200"]
+        labels:
+          project: "observability"
+          app: "tempo"
+          environment: "production"
+
+  - job_name: "alloy"
+    static_configs:
+      - targets: ["alloy:12345"]
+        labels:
+          project: "observability"
+          app: "alloy"
+          environment: "production"
+
+  - job_name: "grafana"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["grafana:3000"]
+        labels:
+          project: "observability"
+          app: "grafana"
+          environment: "production"
+
   - job_name: "motovers-api"
     scheme: https
     metrics_path: "/metrics"
     static_configs:
       - targets: ["kundenportal.nutline.dev"]
         labels:
+          project: "kundenportal"
           app: "motovers-api"
           environment: "production"
 
-  # Docker-Container mit metrics endpoint (label prometheus.scrape=true)
   - job_name: "docker-containers"
     docker_sd_configs:
       - host: unix:///var/run/docker.sock
         refresh_interval: 30s
     relabel_configs:
-      # Nur Container mit Label prometheus.scrape=true
       - source_labels: [__meta_docker_container_label_prometheus_scrape]
         regex: "true"
         action: keep
-      # Port aus Label prometheus.port
-      - source_labels: [__meta_docker_container_label_prometheus_port]
-        regex: (.+)
+
+      - source_labels: [__meta_docker_network_name]
+        regex: "dokploy-network"
+        action: keep
+
+      - source_labels: [__meta_docker_network_ip, __meta_docker_container_label_prometheus_port]
+        separator: ":"
+        regex: "(.+):(.+)"
         target_label: __address__
-        replacement: ${1}
+        replacement: "$1:$2"
+
       - source_labels: [__meta_docker_container_name]
         regex: "/(.+)"
         target_label: container
+
       - source_labels: [__meta_docker_container_label_prometheus_path]
         regex: (.+)
         target_label: __metrics_path__
+
+      - source_labels: [__meta_docker_container_label_prometheus_scheme]
+        regex: (https?)
+        target_label: __scheme__
+
+      - source_labels: [__meta_docker_container_label_com_docker_compose_project]
+        regex: (.+)
+        target_label: compose_project
+
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        regex: (.+)
+        target_label: compose_service
+
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        regex: (.+)
+        target_label: service
+
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        regex: (.+)
+        target_label: app
+
+      - source_labels: [__meta_docker_container_label_com_docker_compose_project]
+        regex: (.+)
+        target_label: project
+
+      - source_labels: [__meta_docker_container_label_observability_app]
+        regex: (.+)
+        target_label: app
+
+      - source_labels: [__meta_docker_container_label_observability_project]
+        regex: (.+)
+        target_label: project
+
+      - source_labels: [__meta_docker_container_label_observability_environment]
+        regex: (.+)
+        target_label: environment

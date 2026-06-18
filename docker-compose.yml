@@ -4,72 +4,120 @@ networks:
 
 services:
   loki:
-    image: grafana/loki:2.9.8
-    command: -config.file=/etc/loki/config.yml
+    image: ${LOKI_IMAGE:-grafana/loki:3.5.1}
+    command:
+      - -config.file=/etc/loki/config.yml
+      - -config.expand-env=true
+    environment:
+      LOKI_RETENTION: ${LOKI_RETENTION:-2160h}
     volumes:
       - ./loki-config.yml:/etc/loki/config.yml:ro
       - loki-data:/loki
     networks: [dokploy-network]
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
-  promtail:
-    image: grafana/promtail:2.9.8
-    command: -config.file=/etc/promtail/config.yml
+  alloy:
+    image: ${ALLOY_IMAGE:-grafana/alloy:v1.9.2}
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
     volumes:
-      - ./promtail-config.yml:/etc/promtail/config.yml:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./alloy-config.alloy:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy-data:/var/lib/alloy/data
     networks: [dokploy-network]
     restart: unless-stopped
     depends_on:
       - loki
+    healthcheck:
+      test: ["CMD", "/usr/bin/alloy", "--version"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   tempo:
-    image: grafana/tempo:2.6.1
-    command: [ "-config.file=/etc/tempo.yml" ]
+    image: ${TEMPO_IMAGE:-grafana/tempo:2.8.1}
+    command:
+      - -config.file=/etc/tempo.yml
+      - -config.expand-env=true
+    environment:
+      TEMPO_RETENTION: ${TEMPO_RETENTION:-2160h}
     volumes:
       - ./tempo.yml:/etc/tempo.yml:ro
       - tempo-data:/var/tempo
     networks: [dokploy-network]
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3200/ready >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   prometheus:
-    image: prom/prometheus:v2.51.0
+    image: ${PROMETHEUS_IMAGE:-quay.io/prometheus/prometheus:v3.4.2}
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=15d'
+      - '--storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-2160h}'
       - '--web.enable-lifecycle'
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/rules/alerts.yml:ro
       - prometheus-data:/prometheus
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks: [dokploy-network]
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   grafana:
-    image: grafana/grafana:latest
+    image: ${GRAFANA_IMAGE:-grafana/grafana:12.0.2}
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=change-me
-      - GF_SERVER_ROOT_URL=https://graf.nutline.dev
-      - GF_SERVER_SERVE_FROM_SUB_PATH=false
-      - GF_SERVER_DOMAIN=graf.nutline.dev
-      - GF_SERVER_ENFORCE_DOMAIN=true
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-https://grafana.nutline.xyz}
+      GF_SERVER_SERVE_FROM_SUB_PATH: "false"
+      GF_SERVER_DOMAIN: ${GRAFANA_DOMAIN:-grafana.nutline.xyz}
+      GF_SERVER_ENFORCE_DOMAIN: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_METRICS_ENABLED: "true"
+      GF_USERS_DEFAULT_THEME: system
     volumes:
       - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
     networks: [dokploy-network]
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=dokploy-network"
       # HTTP router (redirects to HTTPS)
-      - "traefik.http.routers.grafana-http.rule=Host(`graf.nutline.dev`)"
+      - "traefik.http.routers.grafana-http.rule=Host(`${GRAFANA_DOMAIN:-grafana.nutline.xyz}`)"
       - "traefik.http.routers.grafana-http.entrypoints=web"
       - "traefik.http.routers.grafana-http.middlewares=redirect-to-https@file"
       - "traefik.http.routers.grafana-http.service=grafana-svc"
       # HTTPS router
-      - "traefik.http.routers.grafana-https.rule=Host(`graf.nutline.dev`)"
+      - "traefik.http.routers.grafana-https.rule=Host(`${GRAFANA_DOMAIN:-grafana.nutline.xyz}`)"
       - "traefik.http.routers.grafana-https.entrypoints=websecure"
       - "traefik.http.routers.grafana-https.tls.certresolver=letsencrypt"
       - "traefik.http.routers.grafana-https.service=grafana-svc"
@@ -79,8 +127,10 @@ services:
       - loki
       - tempo
       - prometheus
+      - alloy
 
 volumes:
+  alloy-data:
   loki-data:
   tempo-data:
   prometheus-data:

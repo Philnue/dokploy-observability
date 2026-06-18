@@ -1,0 +1,135 @@
+discovery.docker "containers" {
+	host             = "unix:///var/run/docker.sock"
+	refresh_interval = "15s"
+}
+
+discovery.relabel "docker_logs" {
+	targets = discovery.docker.containers.targets
+
+	rule {
+		target_label = "job"
+		replacement  = "docker"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/(.*)"
+		target_label  = "container"
+		replacement   = "$1"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_image"]
+		regex         = "(.+)"
+		target_label  = "image"
+		replacement   = "$1"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+		regex         = "(.+)"
+		target_label  = "compose_project"
+		replacement   = "$1"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+		regex         = "(.+)"
+		target_label  = "compose_service"
+		replacement   = "$1"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+		regex         = "(.+)"
+		target_label  = "service"
+		replacement   = "$1"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+		regex         = "(.+)"
+		target_label  = "app"
+		replacement   = "$1"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+		regex         = "(.+)"
+		target_label  = "project"
+		replacement   = "$1"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_observability_app"]
+		regex         = "(.+)"
+		target_label  = "app"
+		replacement   = "$1"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_observability_project"]
+		regex         = "(.+)"
+		target_label  = "project"
+		replacement   = "$1"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_observability_environment"]
+		regex         = "(.+)"
+		target_label  = "environment"
+		replacement   = "$1"
+	}
+}
+
+loki.source.docker "containers" {
+	host       = "unix:///var/run/docker.sock"
+	targets    = discovery.relabel.docker_logs.output
+	labels     = {source = "docker"}
+	forward_to = [loki.process.docker_logs.receiver]
+}
+
+loki.process "docker_logs" {
+	stage.docker { }
+
+	stage.json {
+		expressions = {
+			level       = "level",
+			module      = "module",
+			request_id  = "request_id",
+			trace_id    = "trace_id",
+			span_id     = "span_id",
+			method      = "method",
+			path        = "path",
+			status      = "status",
+			duration_ms = "duration_ms",
+		}
+	}
+
+	stage.labels {
+		values = {
+			level = "level",
+		}
+	}
+
+	stage.structured_metadata {
+		values = {
+			module      = "module",
+			request_id  = "request_id",
+			trace_id    = "trace_id",
+			span_id     = "span_id",
+			method      = "method",
+			path        = "path",
+			status      = "status",
+			duration_ms = "duration_ms",
+		}
+	}
+
+	forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+	endpoint {
+		url = "http://loki:3100/loki/api/v1/push"
+	}
+}

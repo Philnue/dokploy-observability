@@ -1,0 +1,31 @@
+groups:
+  - name: observability-stack
+    rules:
+      - alert: ObservabilityTargetDown
+        expr: up{project="observability"} == 0
+        for: 2m
+        labels:
+          severity: warning
+          project: observability
+        annotations:
+          summary: "Observability target is down"
+          description: "{{ $labels.job }} / {{ $labels.app }} has been down for more than 2 minutes."
+
+      - alert: AppMetricsTargetDown
+        expr: up{job="docker-containers"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Application metrics target is down"
+          description: "{{ $labels.project }} / {{ $labels.app }} metrics target has been down for more than 5 minutes."
+
+      - alert: LokiIngestionErrors
+        expr: sum(rate(loki_discarded_samples_total[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+          project: observability
+        annotations:
+          summary: "Loki is discarding samples"
+          description: "Loki discarded log samples during the last 5 minutes. Check label cardinality, timestamps, and ingestion limits."
