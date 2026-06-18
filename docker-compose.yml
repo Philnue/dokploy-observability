@@ -90,9 +90,10 @@ services:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-https://grafana.nutline.xyz}
+      GF_SERVER_PROTOCOL: http
       GF_SERVER_SERVE_FROM_SUB_PATH: "false"
       GF_SERVER_DOMAIN: ${GRAFANA_DOMAIN:-grafana.nutline.xyz}
-      GF_SERVER_ENFORCE_DOMAIN: "true"
+      GF_SERVER_ENFORCE_DOMAIN: "false"
       GF_AUTH_ANONYMOUS_ENABLED: "false"
       GF_METRICS_ENABLED: "true"
       GF_USERS_DEFAULT_THEME: system
@@ -108,21 +109,6 @@ services:
       timeout: 10s
       retries: 5
       start_period: 45s
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=dokploy-network"
-      # HTTP router (redirects to HTTPS)
-      - "traefik.http.routers.grafana-http.rule=Host(`${GRAFANA_DOMAIN:-grafana.nutline.xyz}`)"
-      - "traefik.http.routers.grafana-http.entrypoints=web"
-      - "traefik.http.routers.grafana-http.middlewares=redirect-to-https@file"
-      - "traefik.http.routers.grafana-http.service=grafana-svc"
-      # HTTPS router
-      - "traefik.http.routers.grafana-https.rule=Host(`${GRAFANA_DOMAIN:-grafana.nutline.xyz}`)"
-      - "traefik.http.routers.grafana-https.entrypoints=websecure"
-      - "traefik.http.routers.grafana-https.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.grafana-https.service=grafana-svc"
-      # Service
-      - "traefik.http.services.grafana-svc.loadbalancer.server.port=3000"
     depends_on:
       - loki
       - tempo

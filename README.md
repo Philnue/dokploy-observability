@@ -39,7 +39,17 @@ These URLs work from containers attached to `dokploy-network`:
 
 3. Create a Compose service and connect this repository.
 
-4. Copy the environment example and set a real admin password:
+4. In Dokploy, add the public domain only to the `grafana` service:
+
+   - Domain: `grafana.nutline.xyz`
+   - Service: `grafana`
+   - Container port: `3000`
+   - HTTPS enabled
+
+   Do not attach a public domain to `loki`, `tempo`, `prometheus`, or `alloy`.
+   Loki uses port `3100` internally; Grafana uses port `3000`.
+
+5. Copy the environment example and set a real admin password:
 
    ```bash
    cp .env.example .env
@@ -57,9 +67,9 @@ These URLs work from containers attached to `dokploy-network`:
    PROMETHEUS_RETENTION=2160h
    ```
 
-5. Deploy the stack.
+6. Deploy the stack.
 
-6. Check the services on the VPS:
+7. Check the services on the VPS:
 
    ```bash
    docker compose ps
@@ -68,9 +78,9 @@ These URLs work from containers attached to `dokploy-network`:
    docker compose logs prometheus
    ```
 
-7. Open Grafana at `https://grafana.nutline.xyz`.
+8. Open Grafana at `https://grafana.nutline.xyz`.
 
-8. Verify in Grafana:
+9. Verify in Grafana:
 
    - Datasource `Loki` works.
    - Datasource `Prometheus` works.
@@ -304,3 +314,19 @@ No traces:
 2. Use `OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318`.
 3. Use `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`.
 4. Set `OTEL_SERVICE_NAME` to the app name you want to see in Tempo.
+
+Too many redirects on the Grafana domain:
+
+1. In Dokploy, remove the domain from `loki` if it was added there.
+2. Add the domain only to service `grafana` with container port `3000`.
+3. Make sure `.env` matches the public URL:
+
+   ```env
+   GRAFANA_DOMAIN=grafana.nutline.xyz
+   GRAFANA_ROOT_URL=https://grafana.nutline.xyz
+   ```
+
+4. Redeploy the stack.
+5. If the domain is behind Cloudflare, use SSL/TLS mode `Full` or `Full strict`,
+   not `Flexible`.
+6. Clear browser cookies for the domain after fixing the route.
