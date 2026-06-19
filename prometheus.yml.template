@@ -58,6 +58,7 @@ scrape_configs:
           environment: "production"
 
   - job_name: "docker-containers"
+    honor_labels: true
     docker_sd_configs:
       - host: unix:///var/run/docker.sock
         refresh_interval: 30s
