@@ -84,9 +84,6 @@ services:
           -e "s|__TEMPO_METRICS_TARGET__|$${TEMPO_METRICS_TARGET}|g" \
           -e "s|__ALLOY_METRICS_TARGET__|$${ALLOY_METRICS_TARGET}|g" \
           -e "s|__GRAFANA_METRICS_TARGET__|$${GRAFANA_METRICS_TARGET}|g" \
-          -e "s|__MOTOVERS_API_METRICS_SCHEME__|$${MOTOVERS_API_METRICS_SCHEME}|g" \
-          -e "s|__MOTOVERS_API_METRICS_PATH__|$${MOTOVERS_API_METRICS_PATH}|g" \
-          -e "s|__MOTOVERS_API_METRICS_TARGET__|$${MOTOVERS_API_METRICS_TARGET}|g" \
           /etc/prometheus/prometheus.yml.template > /tmp/prometheus.yml
         exec /bin/prometheus \
           --config.file=/tmp/prometheus.yml \
@@ -101,9 +98,6 @@ services:
       TEMPO_METRICS_TARGET: ${TEMPO_METRICS_TARGET:?Set TEMPO_METRICS_TARGET in .env}
       ALLOY_METRICS_TARGET: ${ALLOY_METRICS_TARGET:?Set ALLOY_METRICS_TARGET in .env}
       GRAFANA_METRICS_TARGET: ${GRAFANA_METRICS_TARGET:?Set GRAFANA_METRICS_TARGET in .env}
-      MOTOVERS_API_METRICS_SCHEME: ${MOTOVERS_API_METRICS_SCHEME:?Set MOTOVERS_API_METRICS_SCHEME in .env}
-      MOTOVERS_API_METRICS_PATH: ${MOTOVERS_API_METRICS_PATH:?Set MOTOVERS_API_METRICS_PATH in .env}
-      MOTOVERS_API_METRICS_TARGET: ${MOTOVERS_API_METRICS_TARGET:?Set MOTOVERS_API_METRICS_TARGET in .env}
     volumes:
       - ./prometheus.yml.template:/etc/prometheus/prometheus.yml.template:ro
       - ./prometheus/alerts.yml:/etc/prometheus/rules/alerts.yml:ro

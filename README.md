@@ -37,6 +37,14 @@ Important values:
 
 ## Setup
 
+Local validation on macOS can be done with Podman:
+
+```bash
+podman compose --env-file .env.example config
+```
+
+Deploy and operate the stack on the VPS with Docker.
+
 1. Create the shared Docker network on the VPS:
 
    ```bash
@@ -49,7 +57,7 @@ Important values:
 
 4. In Dokploy, add the public domain only to the `grafana` service:
 
-   - Domain: `grafana.nutline.xyz`
+   - Domain: `grafana.example.com`
    - Service: `grafana`
    - Container port: `3000`
    - HTTPS enabled
@@ -66,8 +74,8 @@ Important values:
    Required values:
 
    ```env
-   GRAFANA_DOMAIN=grafana.nutline.xyz
-   GRAFANA_ROOT_URL=https://grafana.nutline.xyz
+   GRAFANA_DOMAIN=grafana.example.com
+   GRAFANA_ROOT_URL=https://grafana.example.com
    GRAFANA_HEALTH_URL=http://localhost:3000/api/health
    GRAFANA_ADMIN_USER=admin
    GRAFANA_ADMIN_PASSWORD=use-a-real-password
@@ -139,7 +147,9 @@ backup of the Docker volumes.
 ## Connect Another Dokploy Project
 
 Each project can stay in its own Compose file. It only needs the shared network
-and observability labels.
+and observability labels. Logs are collected automatically from Docker. Metrics
+are scraped from containers with `prometheus.scrape=true`; you do not need to add
+a static Prometheus job for each app.
 
 ```yaml
 networks:
@@ -151,21 +161,22 @@ services:
     networks:
       - dokploy-network
     labels:
-      observability.project: "kundenportal"
-      observability.app: "motovers-api"
+      observability.project: "example-project"
+      observability.app: "example-api"
       observability.environment: "production"
       prometheus.scrape: "true"
       prometheus.port: "3000"
       prometheus.path: "/metrics"
     environment:
-      OTEL_SERVICE_NAME: "motovers-api"
+      OTEL_SERVICE_NAME: "example-api"
       OTEL_EXPORTER_OTLP_ENDPOINT: "${TEMPO_OTLP_HTTP_URL}"
       OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
-      OTEL_RESOURCE_ATTRIBUTES: "project=kundenportal,deployment.environment=production"
+      OTEL_RESOURCE_ATTRIBUTES: "project=example-project,deployment.environment=production"
 ```
 
 For metrics, the app must expose `GET /metrics` on the configured port inside
-the container.
+the container. `prometheus.path` is optional and defaults to `/metrics`;
+`prometheus.scheme` is optional and defaults to `http`.
 
 For app projects in separate Compose files, copy the required endpoint values
 from this stack's `.env` into that project's `.env`, especially
@@ -183,8 +194,8 @@ Good stable fields:
 {
   "level": "info",
   "msg": "request completed",
-  "project": "kundenportal",
-  "app": "motovers-api",
+  "project": "example-project",
+  "app": "example-api",
   "environment": "production",
   "module": "http",
   "request_id": "req_123",
@@ -284,7 +295,7 @@ queries.
 All logs for one app:
 
 ```logql
-{project="kundenportal", app="motovers-api"}
+{project="example-project", app="example-api"}
 ```
 
 Errors:
@@ -296,13 +307,13 @@ Errors:
 One request:
 
 ```logql
-{project="kundenportal", app="motovers-api"} | json | request_id="req_123"
+{project="example-project", app="example-api"} | json | request_id="req_123"
 ```
 
 One trace ID:
 
 ```logql
-{project="kundenportal", app="motovers-api"} | json | trace_id="abc"
+{project="example-project", app="example-api"} | json | trace_id="abc"
 ```
 
 ## Troubleshooting
@@ -340,8 +351,8 @@ Too many redirects on the Grafana domain:
 3. Make sure `.env` matches the public URL:
 
    ```env
-   GRAFANA_DOMAIN=grafana.nutline.xyz
-   GRAFANA_ROOT_URL=https://grafana.nutline.xyz
+   GRAFANA_DOMAIN=grafana.example.com
+   GRAFANA_ROOT_URL=https://grafana.example.com
    ```
 
 4. Redeploy the stack.

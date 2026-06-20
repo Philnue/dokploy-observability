@@ -47,16 +47,6 @@ scrape_configs:
           app: "grafana"
           environment: "production"
 
-  - job_name: "motovers-api"
-    scheme: __MOTOVERS_API_METRICS_SCHEME__
-    metrics_path: "__MOTOVERS_API_METRICS_PATH__"
-    static_configs:
-      - targets: ["__MOTOVERS_API_METRICS_TARGET__"]
-        labels:
-          project: "kundenportal"
-          app: "motovers-api"
-          environment: "production"
-
   - job_name: "docker-containers"
     honor_labels: true
     docker_sd_configs:
