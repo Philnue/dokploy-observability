@@ -17,6 +17,73 @@ compatibility with the old Promtail/Loki v11 setup.
 - Prometheus: metrics scraping and alert rules
 - Tempo: trace storage via OTLP
 
+## What Changed
+
+The stack is project-agnostic now. It no longer contains a hardcoded scrape job
+for one specific application. Prometheus discovers application metrics through
+Docker labels on each app container.
+
+The important behavior is:
+
+- Grafana, Loki, Tempo, Prometheus, Alloy, dashboards, and alerts still run as
+  before.
+- Logs are still collected automatically from Docker through Alloy.
+- Traces still go to Tempo through the OTLP endpoint from this stack.
+- App metrics now require labels on the app container:
+  `prometheus.scrape=true`, `prometheus.port`, and optionally
+  `prometheus.path` / `prometheus.scheme`.
+- The stack itself still uses `project="observability"` internally.
+- Old app-specific metrics environment variables are no longer read. They can
+  stay in an existing `.env`, but they do nothing and should be removed when you
+  clean up the file.
+
+## Upgrade Existing Install
+
+Use this when the stack is already deployed and you want to update it to this
+generic version.
+
+1. Pull or deploy this repository version in the existing Dokploy project.
+
+2. Keep your current `.env`, but compare it with `.env.example` and make sure
+   these values are still set for your real domain and services:
+
+   ```env
+   GRAFANA_DOMAIN=grafana.example.com
+   GRAFANA_ROOT_URL=https://grafana.example.com
+   GRAFANA_ADMIN_PASSWORD=use-a-real-password
+   LOKI_URL=http://loki:3100
+   LOKI_PUSH_URL=http://loki:3100/loki/api/v1/push
+   TEMPO_URL=http://tempo:3200
+   TEMPO_OTLP_HTTP_URL=http://tempo:4318
+   PROMETHEUS_URL=http://prometheus:9090
+   ```
+
+3. Remove old app-specific metrics variables from `.env` when you clean it up.
+   They are ignored by the new Compose file.
+
+4. Make sure every app that should send logs, metrics, or traces is attached to
+   `dokploy-network`.
+
+5. Add the labels from `Connect Another Dokploy Project` to each app service
+   that should expose Prometheus metrics.
+
+6. Redeploy the observability stack on the VPS:
+
+   ```bash
+   docker compose up -d
+   ```
+
+7. Redeploy the app projects too, so Docker recreates the containers with the
+   new labels.
+
+8. Verify labels and targets:
+
+   ```bash
+   docker inspect <container> | jq '.[0].Config.Labels'
+   docker compose logs prometheus
+   docker compose logs alloy
+   ```
+
 ## URLs From `.env`
 
 All public and internal URLs are configured in `.env`. The defaults in
