@@ -49,6 +49,23 @@ services:
       retries: 5
       start_period: 30s
 
+  remote-logs:
+    image: ${CADDY_IMAGE:-caddy:2.10.2-alpine}
+    environment:
+      REMOTE_LOG_TOKEN: ${REMOTE_LOG_TOKEN:?Set REMOTE_LOG_TOKEN in .env}
+    volumes:
+      - ./remote-logs/Caddyfile:/etc/caddy/Caddyfile:ro
+    networks: [dokploy-network]
+    restart: unless-stopped
+    depends_on:
+      - alloy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/ready >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
   tempo:
     image: ${TEMPO_IMAGE:-grafana/tempo:2.8.1}
     command:

@@ -3,8 +3,10 @@
 Central Grafana/Loki/Tempo/Prometheus/Alloy stack for multiple Dokploy
 projects on one VPS.
 
-Only Grafana is public through Traefik. Loki, Tempo, Prometheus, and Alloy stay
-inside the Docker network.
+Grafana is public through Traefik. Loki, Tempo, Prometheus, and Alloy stay
+inside the Docker network. The optional `remote-logs` gateway can also be public
+when you need to send logs from outside the VPS; it requires a bearer token and
+forwards only to Alloy.
 
 This stack is configured for a fresh install. It does not keep backwards
 compatibility with the old Promtail/Loki v11 setup.
@@ -14,6 +16,7 @@ compatibility with the old Promtail/Loki v11 setup.
 - Grafana: UI, dashboards, Explore, alert overview
 - Loki: log storage
 - Alloy: Docker log collector for all containers on the host
+- Remote logs gateway: token-protected HTTP ingress for off-host scripts
 - Prometheus: metrics scraping and alert rules
 - Tempo: trace storage via OTLP
 
@@ -28,6 +31,8 @@ The important behavior is:
 - Grafana, Loki, Tempo, Prometheus, Alloy, dashboards, and alerts still run as
   before.
 - Logs are still collected automatically from Docker through Alloy.
+- Logs from off-host scripts can be pushed through the optional `remote-logs`
+  gateway.
 - Traces still go to Tempo through the OTLP endpoint from this stack.
 - App metrics now require labels on the app container:
   `prometheus.scrape=true`, `prometheus.port`, and optionally
@@ -51,6 +56,8 @@ generic version.
    GRAFANA_DOMAIN=grafana.example.com
    GRAFANA_ROOT_URL=https://grafana.example.com
    GRAFANA_ADMIN_PASSWORD=use-a-real-password
+   REMOTE_LOG_TOKEN=use-a-long-random-token
+   REMOTE_LOG_GATEWAY_URL=https://logs.example.com
    LOKI_URL=http://loki:3100
    LOKI_PUSH_URL=http://loki:3100/loki/api/v1/push
    TEMPO_URL=http://tempo:3200
@@ -93,6 +100,8 @@ Important values:
 
 - `GRAFANA_ROOT_URL`: public Grafana URL
 - `GRAFANA_HEALTH_URL`: internal Grafana healthcheck URL
+- `REMOTE_LOG_GATEWAY_URL`: public URL for remote log ingestion
+- `REMOTE_LOG_TOKEN`: bearer token required by the remote log gateway
 - `LOKI_URL`: internal Loki query URL for Grafana
 - `LOKI_PUSH_URL`: internal Loki push URL for Alloy
 - `LOKI_READY_URL`: internal Loki healthcheck URL
@@ -132,10 +141,27 @@ Deploy and operate the stack on the VPS with Docker.
    Do not attach a public domain to `loki`, `tempo`, `prometheus`, or `alloy`.
    Loki uses port `3100` internally; Grafana uses port `3000`.
 
-5. Copy the environment example and set a real admin password:
+5. Optional: if you need logs from scripts outside the VPS, add a second public
+   domain to the `remote-logs` service:
+
+   - Domain: `logs.example.com`
+   - Service: `remote-logs`
+   - Container port: `8080`
+   - HTTPS enabled
+
+   This gateway requires `Authorization: Bearer <REMOTE_LOG_TOKEN>` and forwards
+   logs to Alloy. Do not add a public domain to `alloy` or `loki`.
+
+6. Copy the environment example and set real secrets:
 
    ```bash
    cp .env.example .env
+   ```
+
+   Generate a long token for remote logs:
+
+   ```bash
+   openssl rand -hex 32
    ```
 
    Required values:
@@ -146,6 +172,8 @@ Deploy and operate the stack on the VPS with Docker.
    GRAFANA_HEALTH_URL=http://localhost:3000/api/health
    GRAFANA_ADMIN_USER=admin
    GRAFANA_ADMIN_PASSWORD=use-a-real-password
+   REMOTE_LOG_TOKEN=use-a-long-random-token
+   REMOTE_LOG_GATEWAY_URL=https://logs.example.com
    LOKI_URL=http://loki:3100
    LOKI_PUSH_URL=http://loki:3100/loki/api/v1/push
    TEMPO_URL=http://tempo:3200
@@ -156,20 +184,21 @@ Deploy and operate the stack on the VPS with Docker.
    PROMETHEUS_RETENTION=2160h
    ```
 
-6. Deploy the stack.
+7. Deploy the stack.
 
-7. Check the services on the VPS:
+8. Check the services on the VPS:
 
    ```bash
    docker compose ps
    docker compose logs alloy
+   docker compose logs remote-logs
    docker compose logs loki
    docker compose logs prometheus
    ```
 
-8. Open Grafana at the URL configured in `GRAFANA_ROOT_URL`.
+9. Open Grafana at the URL configured in `GRAFANA_ROOT_URL`.
 
-9. Verify in Grafana:
+10. Verify in Grafana:
 
    - Datasource `Loki` works.
    - Datasource `Prometheus` works.
@@ -248,6 +277,116 @@ the container. `prometheus.path` is optional and defaults to `/metrics`;
 For app projects in separate Compose files, copy the required endpoint values
 from this stack's `.env` into that project's `.env`, especially
 `TEMPO_OTLP_HTTP_URL`.
+
+## Connect A Remote Windows Node.js Script
+
+Use this for a long-running Node.js script that cannot run on the VPS. The
+script sends logs directly to the public `remote-logs` gateway. The gateway
+checks a bearer token and forwards valid logs to Alloy.
+
+Requirements:
+
+- Node.js 20 or newer
+- Public Dokploy domain attached to service `remote-logs`, container port `8080`
+- Same `REMOTE_LOG_TOKEN` in this stack's `.env` and in the Windows script env
+
+Install logging dependencies in the script project:
+
+```powershell
+npm install pino pino-loki
+```
+
+Set environment variables for the script:
+
+```powershell
+$env:REMOTE_LOG_GATEWAY_URL="https://logs.example.com"
+$env:REMOTE_LOG_TOKEN="use-the-same-long-random-token"
+$env:OBSERVABILITY_PROJECT="local-tools"
+$env:OTEL_SERVICE_NAME="windows-node-script"
+$env:OBSERVABILITY_ENVIRONMENT="windows"
+```
+
+Create a logger:
+
+```js
+import pino from "pino";
+
+const project = process.env.OBSERVABILITY_PROJECT ?? "local-tools";
+const app = process.env.OTEL_SERVICE_NAME ?? "windows-node-script";
+const environment = process.env.OBSERVABILITY_ENVIRONMENT ?? "windows";
+
+if (!process.env.REMOTE_LOG_GATEWAY_URL) {
+  throw new Error("Set REMOTE_LOG_GATEWAY_URL");
+}
+
+if (!process.env.REMOTE_LOG_TOKEN) {
+  throw new Error("Set REMOTE_LOG_TOKEN");
+}
+
+export const logger = pino({
+  level: process.env.LOG_LEVEL ?? "info",
+  base: {
+    project,
+    app,
+    environment,
+  },
+  formatters: {
+    level(label) {
+      return { level: label };
+    },
+  },
+  transport: {
+    target: "pino-loki",
+    options: {
+      host: process.env.REMOTE_LOG_GATEWAY_URL,
+      endpoint: "/loki/api/v1/push",
+      headers: {
+        Authorization: `Bearer ${process.env.REMOTE_LOG_TOKEN}`,
+      },
+      labels: {
+        source: "remote",
+        project,
+        app,
+        environment,
+      },
+      propsToLabels: ["level"],
+      batching: {
+        interval: 5,
+        maxBufferSize: 10000,
+      },
+      timeout: 30000,
+      silenceErrors: false,
+    },
+  },
+});
+```
+
+Use it in the script:
+
+```js
+import { logger } from "./logger.js";
+
+logger.info({ module: "worker" }, "script started");
+
+try {
+  // Your long-running script code.
+} catch (error) {
+  logger.error({ err: error, module: "worker" }, "script failed");
+  process.exitCode = 1;
+}
+```
+
+Useful query:
+
+```logql
+{source="remote", project="local-tools", app="windows-node-script"}
+```
+
+Errors:
+
+```logql
+{source="remote", project="local-tools", level=~"error|fatal|critical"}
+```
 
 ## Logging Convention
 
@@ -403,6 +542,15 @@ No Prometheus metrics:
 3. `prometheus.port` must be the internal container port, not the public Traefik
    port.
 4. The endpoint from inside the Docker network must work.
+
+No remote Windows script logs:
+
+1. Check that the `remote-logs` Dokploy domain points to service `remote-logs`
+   with container port `8080`.
+2. Check that the script sends `Authorization: Bearer <REMOTE_LOG_TOKEN>`.
+3. A `401` response means the token is missing or wrong.
+4. Check `docker compose logs remote-logs` and `docker compose logs alloy`.
+5. Query `{source="remote"}` in Grafana Explore.
 
 No traces:
 

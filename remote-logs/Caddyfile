@@ -1,0 +1,11 @@
+:8080 {
+	@ready path /ready
+	respond @ready "ok" 200
+
+	@authorized header Authorization "Bearer {$REMOTE_LOG_TOKEN}"
+	handle @authorized {
+		reverse_proxy alloy:9999
+	}
+
+	respond "unauthorized" 401
+}
