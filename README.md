@@ -626,6 +626,216 @@ Important: Pino's default `level` is numeric. The `formatters.level` block above
 turns it into `info`, `warn`, `error`, and so on, which is nicer for Loki
 queries.
 
+## Writing Good Log Statements
+
+Use this shape everywhere:
+
+```js
+logger.info({ module: "worker", operation: "sync_customers" }, "sync started");
+```
+
+The first argument is structured data. The second argument is the short human
+message. Avoid building one large string with all values inside it.
+
+Good:
+
+```js
+logger.info(
+  {
+    module: "orders",
+    operation: "create_order",
+    order_id: orderId,
+    user_id: userId,
+  },
+  "order created",
+);
+```
+
+Avoid:
+
+```js
+logger.info(`order ${orderId} created for user ${userId}`);
+```
+
+Use levels consistently:
+
+- `debug`: detailed internals that are usually disabled in production
+- `info`: normal lifecycle events, successful jobs, important state changes
+- `warn`: something unexpected happened, but the script can continue
+- `error`: an operation failed and needs attention
+- `fatal`: the process cannot continue and will exit
+
+Script startup and shutdown:
+
+```js
+logger.info(
+  {
+    module: "startup",
+    node_env: process.env.NODE_ENV,
+    version: process.env.APP_VERSION,
+  },
+  "script started",
+);
+
+process.on("SIGINT", () => {
+  logger.info({ module: "shutdown", signal: "SIGINT" }, "script stopped");
+  process.exit(0);
+});
+```
+
+Long-running job with duration:
+
+```js
+import { randomUUID } from "node:crypto";
+
+const jobLog = logger.child({
+  module: "import",
+  operation: "import_orders",
+  job_id: randomUUID(),
+});
+
+const startedAt = Date.now();
+
+jobLog.info({ batch_size: orders.length }, "import started");
+
+try {
+  let imported = 0;
+
+  for (const order of orders) {
+    // import one order
+    imported += 1;
+  }
+
+  jobLog.info(
+    {
+      imported,
+      duration_ms: Date.now() - startedAt,
+    },
+    "import completed",
+  );
+} catch (error) {
+  jobLog.error(
+    {
+      err: error,
+      duration_ms: Date.now() - startedAt,
+    },
+    "import failed",
+  );
+}
+```
+
+Retries:
+
+```js
+logger.warn(
+  {
+    module: "http_client",
+    operation: "fetch_orders",
+    attempt,
+    max_attempts: 3,
+    delay_ms: 1000,
+    err: error,
+  },
+  "request failed; retrying",
+);
+```
+
+HTTP request logs:
+
+```js
+logger.info(
+  {
+    module: "http",
+    request_id: req.id,
+    method: req.method,
+    path: req.route?.path ?? req.path,
+    status: res.statusCode,
+    duration_ms,
+  },
+  "request completed",
+);
+```
+
+Database or external API calls:
+
+```js
+logger.info(
+  {
+    module: "database",
+    operation: "select_due_tasks",
+    row_count: rows.length,
+    duration_ms,
+  },
+  "database query completed",
+);
+```
+
+Errors should include the error object under `err`:
+
+```js
+try {
+  await runJob();
+} catch (error) {
+  logger.error(
+    {
+      err: error,
+      module: "job",
+      operation: "run_job",
+    },
+    "job failed",
+  );
+}
+```
+
+Use stable field names:
+
+- `module`: broad part of the script, for example `worker`, `http`, `database`
+- `operation`: current action, for example `sync_orders`
+- `job_id`: one run of a background job
+- `request_id`: one HTTP request
+- `trace_id` / `span_id`: distributed tracing IDs
+- `duration_ms`: operation duration
+- `status`: HTTP or job status
+- `attempt`: retry attempt
+- `error_code`: stable machine-readable error code
+
+Keep these as Loki labels:
+
+- `source`
+- `project`
+- `app`
+- `environment`
+- `level`
+
+Keep these inside the JSON body, not as labels:
+
+- `request_id`
+- `trace_id`
+- `span_id`
+- `job_id`
+- `user_id`
+- `order_id`
+- full URLs
+- error messages
+
+Never log secrets or raw credentials:
+
+```js
+logger.info(
+  {
+    module: "auth",
+    user_id: user.id,
+  },
+  "user authenticated",
+);
+```
+
+Do not log:
+
+```js
+logger.info({ password, token, authorization }, "debug auth");
+```
+
 ## Useful LogQL Queries
 
 All logs for one app:
