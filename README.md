@@ -284,6 +284,29 @@ Use this for a long-running Node.js script that cannot run on the VPS. The
 script sends logs directly to the public `remote-logs` gateway. The gateway
 checks a bearer token and forwards valid logs to Alloy.
 
+Flow:
+
+```text
+Windows Node.js script -> pino-loki -> remote-logs gateway -> Alloy -> Loki -> Grafana
+```
+
+`remote-logs` is only an HTTP gateway. It checks
+`Authorization: Bearer <REMOTE_LOG_TOKEN>` and proxies valid requests to Alloy.
+It does not convert application logs into Loki's push format.
+
+`pino-loki` is the recommended Node.js client because it:
+
+- formats Pino log events for Loki's `/loki/api/v1/push` endpoint
+- adds stable labels like `source`, `project`, `app`, and `environment`
+- sends the bearer token header to the gateway
+- batches logs so the script does not send one HTTP request per log line
+- keeps your script code close to normal Pino logging
+
+You can send logs without `pino-loki`, but then your code must manually build
+the Loki push payload, add nanosecond timestamps, attach labels, and handle
+batching/errors. The `curl` command below is only a manual test for the gateway,
+not the preferred implementation for a long-running script.
+
 Requirements:
 
 - Node.js 20 or newer
@@ -387,6 +410,113 @@ Errors:
 ```logql
 {source="remote", project="local-tools", level=~"error|fatal|critical"}
 ```
+
+Manual gateway test from macOS or Linux:
+
+```bash
+export REMOTE_LOG_GATEWAY_URL="https://logs.example.com"
+export REMOTE_LOG_TOKEN="use-the-same-long-random-token"
+```
+
+```bash
+curl -i "$REMOTE_LOG_GATEWAY_URL/ready"
+```
+
+Expected result:
+
+```text
+HTTP/2 200
+
+ok
+```
+
+Send one manual test log:
+
+```bash
+curl -i \
+  -X POST "$REMOTE_LOG_GATEWAY_URL/loki/api/v1/push" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $REMOTE_LOG_TOKEN" \
+  --data "$(jq -nc --arg ts "$(date +%s%N)" '{
+    streams: [{
+      stream: {
+        source: "remote",
+        project: "test",
+        app: "manual-curl",
+        environment: "local",
+        level: "info"
+      },
+      values: [[$ts, "{\"project\":\"test\",\"app\":\"manual-curl\",\"environment\":\"local\",\"level\":\"info\",\"msg\":\"hello from curl\",\"module\":\"manual-test\"}"]]
+    }]
+  }')"
+```
+
+Expected result:
+
+```text
+HTTP/2 204
+```
+
+Find it in Grafana:
+
+```logql
+{source="remote", project="test", app="manual-curl"}
+```
+
+Minimal implementation without `pino-loki`:
+
+```js
+const gatewayUrl = process.env.REMOTE_LOG_GATEWAY_URL;
+const token = process.env.REMOTE_LOG_TOKEN;
+
+async function pushLog(level, message, fields = {}) {
+  const project = process.env.OBSERVABILITY_PROJECT ?? "local-tools";
+  const app = process.env.OTEL_SERVICE_NAME ?? "windows-node-script";
+  const environment = process.env.OBSERVABILITY_ENVIRONMENT ?? "windows";
+  const line = JSON.stringify({
+    project,
+    app,
+    environment,
+    level,
+    msg: message,
+    ...fields,
+  });
+
+  const body = {
+    streams: [
+      {
+        stream: {
+          source: "remote",
+          project,
+          app,
+          environment,
+          level,
+        },
+        values: [[`${Date.now()}000000`, line]],
+      },
+    ],
+  };
+
+  const response = await fetch(`${gatewayUrl}/loki/api/v1/push`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Remote log push failed with ${response.status}`);
+  }
+}
+
+await pushLog("info", "script started", { module: "worker" });
+```
+
+This direct `fetch` variant is fine for low-volume scripts or quick tests. For a
+long-running script, prefer `pino-loki` because batching and backpressure are
+already handled by the transport.
 
 ## Logging Convention
 
