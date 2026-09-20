@@ -1,0 +1,17 @@
+# Merge this fragment into the existing central Grafana Compose file.
+# It deliberately adds storage and read-only provisioning mounts only; it does
+# not replace Loki, Tempo, Prometheus, credentials, networks, or Grafana ports.
+services:
+  grafana:
+    environment:
+      GF_PATHS_DATA: /var/lib/grafana
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+    volumes:
+      # Contains grafana.db, users, preferences and saved/starred Explore queries.
+      - grafana-data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/etc/grafana/dashboards:ro
+
+volumes:
+  grafana-data:
+    name: sbb-planung-grafana-data

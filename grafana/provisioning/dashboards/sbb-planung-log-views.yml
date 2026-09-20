@@ -1,0 +1,15 @@
+apiVersion: 1
+
+providers:
+  - name: sbb-planung-log-views
+    orgId: 1
+    folder: SBB Planung
+    folderUid: sbb-planung
+    type: file
+    disableDeletion: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      # Muss zum Compose-Mount passen: ./grafana/dashboards wird nach
+      # /var/lib/grafana/dashboards gemountet (siehe docker-compose.yml).
+      path: /var/lib/grafana/dashboards
